@@ -1,4 +1,4 @@
-# Docker
+# Docker SDK for Python
 The docker python client supports asynchronous parallel access to containers.
 
 Develop with Docker Engine SDKs
@@ -7,14 +7,19 @@ Docker provides an API for interacting with the Docker daemon (called the Docker
 # Reference Docs
 This site was built using [Dokcer Docs manuals](https://docs.docker.com/manuals/).
 
-# Example docker run
+# Installation
+The latest stable version is available on PyPI. Install with pip:
+```
+pip install docker-sdk
+```
+
+# Usage 
+### 1. Example docker run
 ```
 import asyncio,time
-import aiohttp
 import sys,os,json
 
-sys.path.append(os.path.join(os.getcwd(), "docker"))
-from containers import Containers
+from docker.containers import Containers
 
 async def main():
     containers = Containers("172.16.80.42","2376")
@@ -22,6 +27,26 @@ async def main():
     try:
 
         ret = await containers.run(params={ "name": "hello9"},body = {'Image': 'searxng/searxng:latest'})
+        print(json.dumps(ret,ensure_ascii = False,indent=4))
+        
+    finally:
+        await containers.close()
+
+    
+asyncio.run(main())
+```
+### 2. Example docker list
+```
+import asyncio,time
+import sys,os,json
+
+from  docker.containers  import Containers
+
+async def main():
+    containers = Containers("172.16.80.42","2376")
+    await containers.init_session()
+    try:
+        ret = await containers.list(params = {"all":"true"})
         print(json.dumps(ret,ensure_ascii = False,indent=4))
         
     finally:
