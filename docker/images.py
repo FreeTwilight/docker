@@ -4,8 +4,11 @@ import base64,json,os
 import tarfile
 from io import BytesIO
 class Images:
-    def __init__(self,hostname,port):
-        self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=1000))
+    def __init__(self,hostname,port,session:aiohttp.ClientSession = None):
+        if session != None:
+            self.session = session 
+        else:
+            self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=1000))
         self.hostname = hostname 
         self.port = port
         self.api_url = f"http://{self.hostname}:{self.port}"
@@ -55,7 +58,8 @@ class Images:
                     message="Failed to query Docker image",
                     headers=response.headers
                 )
-            return await response.json()
+            else:
+                return await response.json()
         
     #to do
     async def build(self,x_registry_config :dict = None,params: dict = None,path = None):
@@ -579,7 +583,7 @@ class Images:
                     request_info=response.request_info,
                     history=response.history,
                     status=response.status,
-                    message=f"Failed to remove Docker image {image_name}",
+                    message=f"Failed to remove docker network {image_name}",
                     headers=response.headers
                 )
             else:

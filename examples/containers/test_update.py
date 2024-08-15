@@ -2,14 +2,13 @@ import asyncio,time
 import aiohttp
 import sys,os,json
 
-sys.path.append(os.path.join(os.getcwd(), "docker"))
-from containers import Containers
+
+from docker.containers import Containers
 
 async def main():
     containers = Containers("172.16.80.42","2376")
-    await containers.init_session()
     try:
-        params = {
+        body = {
             "BlkioWeight": 300,
             "CpuShares": 512,
             "CpuPeriod": 100000,
@@ -22,7 +21,7 @@ async def main():
             "MemorySwap": 514288000,
             "MemoryReservation": 209715200
         }
-        ret = await containers.update(container_id="0422ccf6e4b9",params=params)
+        ret = await containers.update(container_id="0422ccf6e4b9",body=body)
         print(json.dumps(ret,ensure_ascii = False,indent=4))
         
     finally:

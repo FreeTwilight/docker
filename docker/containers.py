@@ -3,16 +3,15 @@ import aiohttp
 import json
 
 class Containers:
-    def __init__(self,hostname,port):
-        # self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=1000))
-        self.session = None
+    def __init__(self,hostname,port,session:aiohttp.ClientSession = None):
+        if session != None:
+            self.session = session 
+        else:
+            self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=1000))
+            
         self.hostname = hostname 
         self.port = port
         self.api_url = f"http://{self.hostname}:{self.port}"
-    
-    
-    async def init_session(self):
-        self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=1000))
     
     
     async def close(self):
@@ -689,30 +688,47 @@ class Containers:
     
     async def attach(self,container_id:str,params: dict = None):
         """
-        Attach to this container.
+        PATH PARAMETERS
+            id
+                required
+                    string
+                        ID or name of the container
 
-        logs() is a wrapper around this method, which you can use instead if you want to fetch/stream container output without first retrieving the entire backlog.
+        QUERY PARAMETERS
+            detachKeys	
+                string
+                    Override the key sequence for detaching a container.Format is a single character [a-Z] or ctrl-<value> where <value> is one of: a-z, @, ^, [, , or _.
 
-        Parameters:
-        stdout (bool) – Include stdout.
+            logs	
+                boolean
+                    Default: false
+                        Replay previous logs from the container.
+                        This is useful for attaching to a container that has started and you want to output everything since the container started.
+                        If stream is also enabled, once all the previous output has been returned, it will seamlessly transition into streaming current output.
 
-        stderr (bool) – Include stderr.
+            stream	
+                boolean
+                    Default: false
+                        Stream attached streams from the time the request was made onwards.
 
-        stream (bool) – Return container output progressively as an iterator of strings, rather than a single string.
+            stdin	
+                boolean
+                    Default: false
+                        Attach to stdin
 
-        logs (bool) – Include the container’s previous output.
+            stdout	
+                boolean
+                    Default: false
+                        Attach to stdout
 
-        Returns:
-        By default, the container’s output as a single string.
-
-        If stream=True, an iterator of output strings.
-
-        Raises:
-        docker.errors.APIError – If the server returns an error.
+            stderr	
+                boolean
+                    Default: false
+                        Attach to stderr
         """
 
         async with self.session.post(f"{self.api_url}/containers/{container_id}/attach",params = params) as response:
-            if response.status != 200 :
+            if response.status != 200 and response.status != 101 and response.status != 400 and response.status != 404:
                 print(response)
                 raise aiohttp.ClientResponseError(
                     request_info=response.request_info,
@@ -729,18 +745,44 @@ class Containers:
                  
     async def attach_socket(self,container_id:str,params: dict = None):
         """
-        Like attach(), but returns the underlying socket-like object for the HTTP request.
+        PATH PARAMETERS
+            id
+                required
+                    string
+                        ID or name of the container
 
-        Parameters:
-        params (dict) – Dictionary of request parameters (e.g. stdout, stderr, stream).
+        QUERY PARAMETERS
+            detachKeys	
+                string
+                    Override the key sequence for detaching a container.Format is a single character [a-Z] or ctrl-<value> where <value> is one of: a-z, @, ^, [, ,, or _.
 
-        ws (bool) – Use websockets instead of raw HTTP.
+            logs	
+                boolean
+                    Default: false
+                        Return logs
 
-        Raises:
-        docker.errors.APIError – If the server returns an error.
+            stream	
+                boolean
+                    Default: false
+                        Return stream
+
+            stdin	
+                boolean
+                    Default: false
+                        Attach to stdin
+
+            stdout	
+                boolean
+                    Default: false
+                        Attach to stdout
+
+            stderr	
+                boolean
+                    Default: false
+                        Attach to stderr
         """
 
-        async with self.session.get(f"{self.api_url}/containers/{container_id}/attach/ws",json = params) as response:
+        async with self.session.get(f"{self.api_url}/containers/{container_id}/attach/ws",params = params) as response:
             if response.status != 200 and response.status != 101 and response.status != 404 and response.status != 400:
                 print(response)
                 raise aiohttp.ClientResponseError(
@@ -757,94 +799,68 @@ class Containers:
                 return await response.text()      
         
         
-    async def commit(self,container_id:str,params: dict = None):
+    async def exec_run(self,container_id:str,body: dict = None):
         """
-        Commit a container to an image. Similar to the docker commit command.
+        Run a command inside a running container.
 
-        Parameters:
-        repo (str) – The repository to push the image to
+        PATH PARAMETERS
+            id
+                required
+                    string
+                        ID or name of container
 
-        tag (str) – The tag to push
+        REQUEST BODY SCHEMA: application/json
+            required
+            Exec configuration
 
-        message (str) – A commit message
+            AttachStdin	
+                boolean
+                    Attach to stdin of the exec command.
 
-        author (str) – The name of the author
+            AttachStdout	
+                boolean
+                    Attach to stdout of the exec command.
 
-        pause (bool) – Whether to pause the container before committing
+            AttachStderr	
+                boolean
+                    Attach to stderr of the exec command.
 
-        changes (str) – Dockerfile instructions to apply while committing
+            ConsoleSize	
+                Array of integers or null = 2 items
+                    Initial console size, as an [height, width] array.
 
-        conf (dict) –
+            DetachKeys	
+                string
+                    Override the key sequence for detaching a container. Format is a single character [a-Z] or ctrl-<value> where <value> is one of: a-z, @, ^, [, , or _.
 
-        The configuration for the container. See the Engine API documentation for full details.
+            Tty	
+                boolean
+                    Allocate a pseudo-TTY.
 
-        Raises:
-        docker.errors.APIError – If the server returns an error.
-        """
-        params['container'] = container_id
-        headers = {'Content-Type': 'application/json'}
-        async with self.session.post(f"{self.api_url}/commit", params=params, headers=headers) as response:
-            response_text = await response.text()
-            if response.status != 201:
-                print(response_text)  # 打印服务器响应
-                raise aiohttp.ClientResponseError(
-                    request_info=response.request_info,
-                    history=response.history,
-                    status=response.status,
-                    message=f"Failed to query Docker container {container_id}",
-                    headers=response.headers
-                )
-            return await response.json()
-        
-        
-    async def exec_run(self,container_id:str,params: dict = None):
-        """
-        Run a command inside this container. Similar to docker exec.
+            Env	
+                Array of strings
+                    A list of environment variables in the form ["VAR=value", ...].
 
-        Parameters:
-        cmd (str or list) – Command to be executed
+            Cmd	
+                Array of strings
+                    Command to run, as a string or array of strings.
 
-        stdout (bool) – Attach to stdout. Default: True
+            Privileged	
+                boolean
+                    Default: false
+                        Runs the exec process with extended privileges.
 
-        stderr (bool) – Attach to stderr. Default: True
+            User	
+                string
+                    The user, and optionally, group to run the exec process inside the container. Format is one of: user, user:group, uid, or uid:gid.
 
-        stdin (bool) – Attach to stdin. Default: False
-
-        tty (bool) – Allocate a pseudo-TTY. Default: False
-
-        privileged (bool) – Run as privileged.
-
-        user (str) – User to execute command as. Default: root
-
-        detach (bool) – If true, detach from the exec command. Default: False
-
-        stream (bool) – Stream response data. Default: False
-
-        socket (bool) – Return the connection socket to allow custom read/write operations. Default: False
-
-        environment (dict or list) – A dictionary or a list of strings in the following format ["PASSWORD=xxx"] or {"PASSWORD": "xxx"}.
-
-        workdir (str) – Path to working directory for this exec session
-
-        demux (bool) – Return stdout and stderr separately
-
-        Returns:
-        A tuple of (exit_code, output)
-        exit_code: (int):
-        Exit code for the executed command or None if either stream or socket is True.
-
-        output: (generator, bytes, or tuple):
-        If stream=True, a generator yielding response chunks. If socket=True, a socket object for the connection. If demux=True, a tuple of two bytes: stdout and stderr. A bytestring containing response data otherwise.
-
-        Return type:
-        (ExecResult)
-
-        Raises:
-        docker.errors.APIError – If the server returns an error.
+            WorkingDir	
+                string
+                    The working directory for the exec process inside the container.
         """
         headers = {'Content-Type': 'application/json'}
         async with self.session.post(f"{self.api_url}/containers/{container_id}/exec",json = params,headers=headers) as response:
-            if response.status != 201 :
+            if response.status != 201 and response.status != 404 and response.status != 409 :
                 print(response)
                 raise aiohttp.ClientResponseError(
                     request_info=response.request_info,
@@ -858,34 +874,19 @@ class Containers:
            
     async def get_archive(self,container_id:str,params: dict = None):
         """
-        Retrieve a file or folder from the container in the form of a tar archive.
+        Get a tar archive of a resource in the filesystem of container id.
 
-        Parameters:
-        path (str) – Path to the file or folder to retrieve
+        PATH PARAMETERS
+            id
+                required
+                    string
+                        ID or name of the container
 
-        chunk_size (int) – The number of bytes returned by each iteration of the generator. If None, data will be streamed as it is received. Default: 2 MB
-
-        encode_stream (bool) – Determines if data should be encoded (gzip-compressed) during transmission. Default: False
-
-        Returns:
-        First element is a raw tar data stream. Second element is a dict containing stat information on the specified path.
-
-        Return type:
-        (tuple)
-
-        Raises:
-        docker.errors.APIError – If the server returns an error.
-
-        Example
-
-        f = open('./sh_bin.tar', 'wb')
-        bits, stat = container.get_archive('/bin/sh')
-        print(stat)
-        {'name': 'sh', 'size': 1075464, 'mode': 493,
-        'mtime': '2018-10-01T15:37:48-07:00', 'linkTarget': ''}
-        for chunk in bits:
-        f.write(chunk)
-        f.close()
+        QUERY PARAMETERS
+            path
+                required
+                    string
+                        Resource in the container’s filesystem to archive.
         """
 
         async with self.session.get(f"{self.api_url}/containers/{container_id}/archive",params = params) as response:
@@ -904,24 +905,38 @@ class Containers:
             else:
                 return await response.text()   
         
-    #todo    
+   
     async def put_archive(self,container_id:str,params: dict = None):
         """
-        Insert a file or folder in this container using a tar archive as source.
+        Upload a tar archive to be extracted to a path in the filesystem of container id. path parameter is asserted to be a directory. If it exists as a file, 400 error will be returned with message "not a directory".
 
-        Parameters:
-        path (str) – Path inside the container where the file(s) will be extracted. Must exist.
+        PATH PARAMETERS
+            id
+                required
+                    string
+                        ID or name of the container
 
-        data (bytes or stream) – tar data to be extracted
+        QUERY PARAMETERS
+            path
+                required
+                    string
+                        Path to a directory in the container to extract the archive’s contents into.
 
-        Returns:
-        True if the call succeeds.
+            noOverwriteDirNonDir	
+                string
+                    If 1, true, or True then it will be an error if unpacking the given content would cause an existing directory to be replaced with a non-directory and vice versa.
 
-        Return type:
-        (bool)
+            copyUIDGID	
+                string
+                    If 1, true, then it will copy UID/GID maps to the dest file or dir
 
-        Raises:
-        APIError –
+        REQUEST BODY SCHEMA: 
+            application/x-tar
+            application/x-tar
+            required
+            The input stream must be a tar archive compressed with one of the following algorithms: identity (no compression), gzip, bzip2, or xz.
+
+            string <binary>
         """
 
         async with self.session.put(f"{self.api_url}/containers/{container_id}/archive",params = params) as response:
@@ -939,13 +954,17 @@ class Containers:
         
     async def rename(self,container_id:str,params: dict = None):
         """
-        Rename this container. Similar to the docker rename command.
+        PATH PARAMETERS
+            id
+                required
+                    string
+                        ID or name of the container
 
-        Parameters:
-        name (str) – New name for the container
-
-        Raises:
-        docker.errors.APIError – If the server returns an error.
+        QUERY PARAMETERS
+            name
+                required
+                    string
+                        New name for the container
         """
 
         async with self.session.post(f"{self.api_url}/containers/{container_id}/rename",params = params) as response:
@@ -965,15 +984,22 @@ class Containers:
            
     async def resize(self,container_id:str,params: dict = None):
         """
-        Resize the tty session.
+        Resize the TTY for a container.
 
-        Parameters:
-        height (int) – Height of tty session
+        PATH PARAMETERS
+            id
+                required
+                    string
+                        ID or name of the container
 
-        width (int) – Width of tty session
+        QUERY PARAMETERS
+            h	
+                integer
+                    Height of the TTY session in characters
 
-        Raises:
-        docker.errors.APIError – If the server returns an error.
+            w	
+                integer
+                    Width of the TTY session in characters
         """
 
         async with self.session.post(f"{self.api_url}/containers/{container_id}/resize",params = params) as response:
@@ -1059,10 +1085,15 @@ class Containers:
         
     async def pause(self,container_id:str,params: dict = None):
         """
-        Pauses all processes within this container.
+        Use the freezer cgroup to suspend all processes in a container.
 
-        Raises:
-        docker.errors.APIError – If the server returns an error.
+        Traditionally, when suspending a process the SIGSTOP signal is used, which is observable by the process being suspended. With the freezer cgroup the process is unaware, and unable to capture, that it is being suspended, and subsequently resumed.
+
+        PATH PARAMETERS
+            id
+                required
+                    string
+                        ID or name of the container
         """
 
         async with self.session.post(f"{self.api_url}/containers/{container_id}/pause",params = params) as response:
@@ -1083,11 +1114,13 @@ class Containers:
     
     async def unpause(self,container_id:str,params: dict = None):
         """
-        恢复容器内所有进程
-        Unpause all processes within the container.
+        Resume a container which has been paused.
 
-        Raises:
-        docker.errors.APIError – If the server returns an error.
+        PATH PARAMETERS
+            id
+                required
+                    string
+                        ID or name of the container
         """
 
         async with self.session.post(f"{self.api_url}/containers/{container_id}/unpause",params = params) as response:
@@ -1106,45 +1139,163 @@ class Containers:
             else:
                 return await response.text()
         
-    #todo
-    async def update(self,container_id:str,params: dict = None):
+    async def update(self,container_id:str,body: dict = None):
         """
-        Update resource configuration of the containers.
+        Change various configuration options of a container without having to recreate it.
 
-        Parameters:
-        blkio_weight (int) – Block IO (relative weight), between 10 and 1000
+        PATH PARAMETERS
+            id
+            required
+            string
+            ID or name of the container
 
-        cpu_period (int) – Limit CPU CFS (Completely Fair Scheduler) period
+        REQUEST BODY SCHEMA: application/json
+            required
+            CpuShares	
+            integer
+            An integer value representing this container's relative CPU weight versus other containers.
 
-        cpu_quota (int) – Limit CPU CFS (Completely Fair Scheduler) quota
+            Memory	
+            integer <int64>
+            Default: 0
+            Memory limit in bytes.
 
-        cpu_shares (int) – CPU shares (relative weight)
+            CgroupParent	
+            string
+            Path to cgroups under which the container's cgroup is created. If the path is not absolute, the path is considered to be relative to the cgroups path of the init process. Cgroups are created if they do not already exist.
 
-        cpuset_cpus (str) – CPUs in which to allow execution
+            BlkioWeight	
+            integer [ 0 .. 1000 ]
+            Block IO weight (relative weight).
 
-        cpuset_mems (str) – MEMs in which to allow execution
+            BlkioWeightDevice	
+            Array of objects
+            Block IO weight (relative device weight) in the form:
 
-        mem_limit (int or str) – Memory limit
+            [{"Path": "device_path", "Weight": weight}]
+            BlkioDeviceReadBps	
+            Array of objects (ThrottleDevice)
+            Limit read rate (bytes per second) from a device, in the form:
 
-        mem_reservation (int or str) – Memory soft limit
+            [{"Path": "device_path", "Rate": rate}]
+            BlkioDeviceWriteBps	
+            Array of objects (ThrottleDevice)
+            Limit write rate (bytes per second) to a device, in the form:
 
-        memswap_limit (int or str) – Total memory (memory + swap), -1 to disable swap
+            [{"Path": "device_path", "Rate": rate}]
+            BlkioDeviceReadIOps	
+            Array of objects (ThrottleDevice)
+            Limit read rate (IO per second) from a device, in the form:
 
-        kernel_memory (int or str) – Kernel memory limit
+            [{"Path": "device_path", "Rate": rate}]
+            BlkioDeviceWriteIOps	
+            Array of objects (ThrottleDevice)
+            Limit write rate (IO per second) to a device, in the form:
 
-        restart_policy (dict) – Restart policy dictionary
+            [{"Path": "device_path", "Rate": rate}]
+            CpuPeriod	
+            integer <int64>
+            The length of a CPU period in microseconds.
 
-        Returns:
-        Dictionary containing a Warnings key.
+            CpuQuota	
+            integer <int64>
+            Microseconds of CPU time that the container can get in a CPU period.
 
-        Return type:
-        (dict)
+            CpuRealtimePeriod	
+            integer <int64>
+            The length of a CPU real-time period in microseconds. Set to 0 to allocate no time allocated to real-time tasks.
 
-        Raises:
-        docker.errors.APIError – If the server returns an error.
+            CpuRealtimeRuntime	
+            integer <int64>
+            The length of a CPU real-time runtime in microseconds. Set to 0 to allocate no time allocated to real-time tasks.
+
+            CpusetCpus	
+            string
+            CPUs in which to allow execution (e.g., 0-3, 0,1).
+
+            CpusetMems	
+            string
+            Memory nodes (MEMs) in which to allow execution (0-3, 0,1). Only effective on NUMA systems.
+
+            Devices	
+            Array of objects (DeviceMapping)
+            A list of devices to add to the container.
+
+            DeviceCgroupRules	
+            Array of strings
+            a list of cgroup rules to apply to the container
+
+            DeviceRequests	
+            Array of objects (DeviceRequest)
+            A list of requests for devices to be sent to device drivers.
+
+            KernelMemoryTCP	
+            integer <int64>
+            Hard limit for kernel TCP buffer memory (in bytes). Depending on the OCI runtime in use, this option may be ignored. It is no longer supported by the default (runc) runtime.
+
+            This field is omitted when empty.
+
+            MemoryReservation	
+            integer <int64>
+            Memory soft limit in bytes.
+
+            MemorySwap	
+            integer <int64>
+            Total memory limit (memory + swap). Set as -1 to enable unlimited swap.
+
+            MemorySwappiness	
+            integer <int64> [ 0 .. 100 ]
+            Tune a container's memory swappiness behavior. Accepts an integer between 0 and 100.
+
+            NanoCpus	
+            integer <int64>
+            CPU quota in units of 10-9 CPUs.
+
+            OomKillDisable	
+            boolean
+            Disable OOM Killer for the container.
+
+            Init	
+            boolean or null
+            Run an init inside the container that forwards signals and reaps processes. This field is omitted if empty, and the default (as configured on the daemon) is used.
+
+            PidsLimit	
+            integer or null <int64>
+            Tune a container's PIDs limit. Set 0 or -1 for unlimited, or null to not change.
+
+            Ulimits	
+            Array of objects
+            A list of resource limits to set in the container. For example:
+
+            {"Name": "nofile", "Soft": 1024, "Hard": 2048}
+            CpuCount	
+            integer <int64>
+            The number of usable CPUs (Windows only).
+
+            On Windows Server containers, the processor resource controls are mutually exclusive. The order of precedence is CPUCount first, then CPUShares, and CPUPercent last.
+
+            CpuPercent	
+            integer <int64>
+            The usable percentage of the available CPUs (Windows only).
+
+            On Windows Server containers, the processor resource controls are mutually exclusive. The order of precedence is CPUCount first, then CPUShares, and CPUPercent last.
+
+            IOMaximumIOps	
+            integer <int64>
+            Maximum IOps for the container system drive (Windows only)
+
+            IOMaximumBandwidth	
+            integer <int64>
+            Maximum IO in bytes per second for the container system drive (Windows only).
+
+            RestartPolicy	
+            object (RestartPolicy)
+            The behavior to apply when the container exits. The default is not to restart.
+
+            An ever increasing delay (double the previous delay, starting at 100ms) is added before each restart to prevent flooding the server.
         """
 
-        async with self.session.post(f"{self.api_url}/containers/{container_id}/update",json = params) as response:
+        async with self.session.post(f"{self.api_url}/containers/{container_id}/update",json = body) as response:
             if response.status != 200 and response.status != 404 and response.status != 400:
                 print(response)
                 raise aiohttp.ClientResponseError(

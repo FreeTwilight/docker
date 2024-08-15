@@ -2,8 +2,8 @@ import asyncio,time
 import aiohttp
 import sys,os,json
 
-sys.path.append(os.path.join(os.getcwd(), "docker"))
-from images import Images
+
+from docker.images import Images
 
 async def main():
     images = Images("172.16.80.42","2376")
